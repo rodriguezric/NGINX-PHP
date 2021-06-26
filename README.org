@@ -1,0 +1,86 @@
+#+title: NGINX + PHP-FPM Container
+#+author: Ricardo Rodriguez
+
+* Synopsis
+  This is a minimal container setup for using NGINX and PHP-FPM. I built this to practice learning Docker.
+  I had several conceptual blocks and an issue setting up my NGINX conf file, since my understanding of
+  NGINX as of writing this document is ~low~.
+
+* Running the Container
+  
+  To run the container do the following:
+  1. ~docker-compose up~
+  2. Navigate to ~localhost:81~
+     
+  You can configure the port you want to see your app in =docker-compose.yml=, editing the =nginx= service.
+
+* Conceptual Blocks
+** Where do I put my app code?
+   When learning how to use an NGINX container I was able to bind my app to =/var/www/html= and get it
+   working. When working in conjunction with PHP-FPM, I was confused where to bind my app.
+
+*** Solution
+    The app needs to be binded to both NGINX and PHP-FPM:
+    #+begin_src yaml
+      services:
+        php:
+          # ...
+          volumes:
+            - ./app:/var/www/html
+
+        nginx:
+          # ...
+          volumes:
+            # ...
+            - ./app:/var/www/html
+    #+end_src
+
+    NGINX will serve the static files: images, css, html and PHP-FPM will serve the PHP files.
+   
+
+** Do I need to deliberatly =link= NGINX to PHP-FPM?
+   When reading articles on how to use NGINX with PHP-FPM, I frequently saw a =link= entry in =docker-compose.yml=.
+   I eventually read the official documentation on =link=, it is a legacy feature for connecting containers and is
+   satisfied by Docker's server feature.
+** How do I configure NGINX proprely?
+   This was my biggest difficulty. Combined with not knowing where to put my app code, I was fiddling with
+   the config and compose. I eventually saw a =File not found= error when navigating to =index.php=. This
+   was an important clue.
+
+   The key piece I was missing in my NGINX conf was this line:
+
+   #+begin_src conf
+    fastcgi_param   SCRIPT_FILENAME $document_root$fastcgi_script_name; 
+   #+end_src
+
+   This is what enabled PHP-FPM to properly handle the script when navigating to PHP files. Here is the full
+   conf:
+
+   #+begin_src conf
+    server {
+        listen 80;
+
+        root /var/www/html;
+
+        location / {
+            try_files $uri $uri/index.php;
+        }
+
+        location ~ [^/]\.php(/|$) {
+            fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+            if (!-f $document_root$fastcgi_script_name) {
+                return 404;
+            }
+
+            fastcgi_param   SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_param   HTTP_PROXY "";
+            fastcgi_pass    php:9000;
+            fastcgi_index   index.php;
+
+            include         fastcgi_params;
+        }
+    }
+   #+end_src
+
+   This is acceptable for local dev and potentially for migrating legacy projects off of servers. Of course, using
+   correct PHP versions in the PHP-FPM container.
