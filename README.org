@@ -1,4 +1,4 @@
-#+title: NGINX + PHP-FPM Container
+#+title: NGINX + PHP-FPM Containers
 #+author: Ricardo Rodriguez
 
 * Synopsis
